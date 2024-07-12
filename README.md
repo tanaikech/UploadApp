@@ -458,9 +458,93 @@ When you run this script, the file of `fileId` of `source` is uploaded to your c
 
 In the case of Google Apps Script, when the array with a large size is created several times in one execution, an error related to the memory occurs, and/or the script is frozen. So, in the case of Class UploadApp, an array is created outside of the loop, and the array including data is cleared using `splice`. By this, it avoids creating the new arrays.
 
+In order to explain this situation, the sample scripts are as follows. Both results are the same. The process for using an array is different.
+
+At `test1`, `array` is declared in a loop. And, the process is run using `array`. And, at the next loop, `array` is declared again.
+
+```javascript
+function test1() {
+  for (let i = 0; i < 5; i++) {
+    const array = [];
+
+    // Do something: This is a sample process.
+    for (let j = 0; j < 5; j++) {
+      array.push(j);
+    }
+
+    // Result
+    console.log(array);
+  }
+}
+```
+
+At `test2`, `array` is declared outside of the loop. And, the process is run using `array`. And, before the next loop, `array` is cleared by `splice`. By this, the same array is used. This is an important point for using large data with the array using Google Apps Script.
+
+```javascript
+function test2() {
+  const array = [];
+  for (let i = 0; i < 5; i++) {
+
+    // Do something: This is a sample process.
+    for (let j = 0; j < 5; j++) {
+      array.push(j);
+    }
+
+    // Result
+    console.log(array);
+
+    // Clear array.
+    array.splice(0, array.length);
+  }
+}
+```
+
 # Note
 
 As another piece of information, Class UploadApp can also be used for uploading files with larger sizes. But, in that case, it supposes that the upload process cannot be done within 6 minutes which is the maximum execution time of Google Apps Script. At Class UploadApp, when the processing time of the script is over 5 minutes, the script is automatically finished. At that time, the data of the current process is stored in PropertiesService. And, you can see the message `There is the next upload chunk. So, please run the script again.` in the log. When you see it, please run the script again. By this, the next upload process is run. When all upload processes are finished, the metadata of the uploaded file is returned. I think that this process can be run with the time-driven trigger.
+
+# Appendix
+
+As appendix, at the "Prompting with videos" section of [this official document](https://github.com/google/generative-ai-docs/blob/main/site/en/gemini-api/docs/prompting_with_media.ipynb), you can see the sample MP4 file like `wget https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4`. The size of this file is 64,657,027 bytes. This file cannot be directly uploaded by `uploadType=multipart`. In this case, this script Class UploadApp can be used as follows.
+
+In this case, please install my Google Apps Script library [GeminiWithFiles](https://github.com/tanaikech/GeminiWithFiles).
+
+```javascript
+function sample1c() {
+  // This URL is from https://github.com/google/generative-ai-docs/blob/main/site/en/gemini-api/docs/prompting_with_media.ipynb
+  const url = "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4"; // 64,657,027 bytes
+
+  const apiKey = "###"; // Please set your API key.
+
+
+  const q = "Description this video.";
+
+  const object = {
+    source: { url },
+    destination: {
+      uploadUrl: `https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=resumable&key=${apiKey}`,
+      metadata: { file: { displayName: "sampleMp4File" } }
+    },
+    accessToken: ScriptApp.getOAuthToken(),
+  };
+  const { file } = new UploadApp(object).run();
+
+  const g = GeminiWithFiles.geminiWithFiles({ apiKey, functions: {} });
+  const res = g.withUploadedFilesByGenerateContent([file]).generateContent({ q });
+  console.log(res);
+}
+```
+
+When this script is run, the following result is obtained. You can see that the data over 50 MB can be correctly uploaded and correctly used for generating content.
+
+```
+The video starts with the introduction of "Big Buck Bunny" which is presented by "The Peach Open Movie Project". 
+A fat white rabbit wakes up, comes out of his rabbit hole and enjoys the fresh air. He stretches himself, smiles and looks around. He sniffs at the flowers and gets happy when a butterfly sits on his nose. Then, he sees a red apple fallen from a tree, thinks about it for a while and picks it up. 
+A squirrel, chipmunk and a chinchilla are watching him from behind a tree. They look at each other and plan something naughty. When the rabbit passes by the tree, the chipmunk throws a nut at him that misses him and hits the tree. The rabbit looks back at them and shakes his head while the three laugh silently. 
+Then the rabbit sees a butterfly on the tree and tries to catch it by hitting the tree with a stick but he fails to catch it. The three again start laughing at him. The chipmunk throws another nut that again misses the rabbit. Then the rabbit makes an arrow and bow with the things he finds around, points at the three. The three hide themselves behind the tree. The rabbit releases the arrow that hits the tree and creates a crack on the tree trunk. The nut that the chipmunk was holding falls down from the crack. The chinchilla runs to get the nut but the rabbit catches him and scolds him for being naughty.  The chipmunk and squirrel look scared, rabbit takes the nut and walks away.
+The chipmunk and squirrel again plan something mischievous. The chipmunk wants to throw a nut at the rabbit again but the squirrel stops him. The squirrel wants to knock down the apple from the tree that the rabbit loves. He jumps from the tree to get the apple, fails at first but succeeds on the second attempt. He throws the apple at the rabbit which misses him and hits the tree trunk. The rabbit looks back at them angrily but the three hide themselves behind the tree again. The chipmunk runs out and throws the nut at the rabbit which misses him and hits the apple that was stuck in the tree trunk. The apple falls down near the rabbit. The rabbit picks it up and gives it to the squirrel as a reward for getting the apple down for him.  The three are stunned. The rabbit again goes for the butterfly. He makes a loop with a vine and waits for the butterfly to come down. The butterfly comes down and sits on the vine, the rabbit pulls the vine but the butterfly flies away. He fails again. 
+The rabbit finds three sharp sticks on the ground and pushes them in the ground. When the squirrel tries to fly, he gets stuck in the sticks that the rabbit has set up as a trap. The rabbit comes there, pulls him out and gives him a nut. The three are stunned again. The video ends with the ending credits.
+```
 
 ---
 
